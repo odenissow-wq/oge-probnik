@@ -203,11 +203,12 @@ textarea.letter { width: 100%; min-height: 340px; resize: vertical; border: 1px 
 
     <div class="savebox" id="saveBox">
       <h2 style="font-size:1.15rem">Отправка учителю</h2>
-      <p id="saveHint">Когда закончите обе части, нажмите «Сохранить результаты». Файл появится в папке «Загрузки». Отправьте его учителю в мессенджере.</p>
+      <p id="saveHint">Когда закончите обе части, нажмите «Отправить учителю». Работа уйдёт учителю вместе с аудиозаписями.</p>
       <div class="row">
-        <button id="saveBtn" class="btn" type="button" disabled>Сохранить результаты</button>
-        <span id="saveMsg" class="small muted"></span>
+        <button id="sendBtn" class="btn" type="button" disabled>Отправить учителю</button>
+        <button id="saveBtn" class="btn ghost" type="button" disabled>Сохранить файл на компьютер</button>
       </div>
+      <p id="saveMsg" class="small" aria-live="polite"></p>
     </div>
     <p class="small muted" style="text-align:center"><button id="resetBtn" type="button" class="btn ghost" style="padding:6px 12px;font-size:.85rem">Стереть все ответы и начать заново</button></p>
   </div>
@@ -446,12 +447,14 @@ textarea.letter { width: 100%; min-height: 340px; resize: vertical; border: 1px 
 (function () {
 'use strict';
 const VARIANT = 'oge27-demo';
+const SEND_URL = 'https://script.google.com/macros/s/AKfycbxlep0IIMMxx7Zp-WRXLWn0MK0m14Zoyind7NsR0Kgu1cWpcYyVYSV_48_ea_eO8Y_WFg/exec';
+let sending = false;
 const STORE = VARIANT + '-v1';
 const WRITTEN_SEC = 120 * 60;
 const LISTEN_DUR = 1444.9;
 const SURVEY_DUR = 341.9;
-const SALT = 'qo65sp7x';
-const KEYS = {"t1":["1vk6vfj7xjs"],"t2":["1fi9ay30xwr"],"t3":["2e36fmfl7ql"],"t4":["29hsf5crtox"],"t5.A":["j7o4ic5d82"],"t5.B":["x5n5kiby5y"],"t5.C":["2d0zxecymn7"],"t5.D":["1isqnlgwv4d"],"t5.E":["8b1djf9qk8"],"t6":["1hfrkk8tpk9"],"t7":["1hc33rl15bl"],"t8":["2cmk04k7e4w"],"t9":["107kyuwnj6i","13jm5jb2nvf"],"t10":["jgq8mymnls"],"t11":["1zz8iyv2s8m"],"t12.A":["12ihe6lvpef"],"t12.B":["164x8v01mbk"],"t12.C":["1zjwss9iutg"],"t12.D":["24ygzgqpp1r"],"t12.E":["1qukhc5qfjr"],"t12.F":["7934navya5"],"t13":["ff2gc3zezo"],"t14":["1brdpyyrtsa"],"t15":["218fxektnqs"],"t16":["1k7dvs9m6yw"],"t17":["1mqmpqr7yi3"],"t18":["ppe4pfz56"],"t19":["8ojh3pp1ey"],"t20":["1q4avvsfzvp"],"t21":["19jq63taltj"],"t22":["128gzm92vhs"],"t23":["1acme792bjw"],"t24":["1mm5pngsyf3","8e5bdyvuri"],"t25":["x8i6ed21t1"],"t26":["kw02msf9eq"],"t27":["298ze0o1kik"],"t28":["y360ajjglk"],"t29":["22m7n3nmzxb"],"t30":["2g4myav77f5"],"t31":["22kilfb9kk8"],"t32":["hkgh80kxeb"],"t33":["1afzh2shx21"],"t34":["1y0bfb0hyrv"]};
+const SALT = 'e1lzwqd9';
+const KEYS = {"t1":["1nehoza7o3p"],"t2":["12azyneua7x"],"t3":["1kp3ovrp9b7"],"t4":["90fn3lcbmx"],"t5.A":["sakgy392xz"],"t5.B":["tcy2x2646q"],"t5.C":["8eofgvq7kj"],"t5.D":["1746di1jket"],"t5.E":["1h9p0vpuqa0"],"t6":["26sbkdxzhaq"],"t7":["zvzabche8w"],"t8":["b01ygo3s52"],"t9":["cuwuz4e2s","crmkw5c7ce"],"t10":["1hr083fgl87"],"t11":["1i5vdoh4ag3"],"t12.A":["14qycxg64tg"],"t12.B":["13c3stbin1z"],"t12.C":["1q29czgbl2q"],"t12.D":["vljdi37744"],"t12.E":["ydbl8w9a2n"],"t12.F":["fpa3u4394a"],"t13":["4j349vpjow"],"t14":["ripar62yk7"],"t15":["q5elu99rzb"],"t16":["21ph475z2ol"],"t17":["1p32qfia91f"],"t18":["125bxlxn3e8"],"t19":["juwrlsbytc"],"t20":["20z1x93kliy"],"t21":["20h4fm3gqv9"],"t22":["1qqhk0vtt87"],"t23":["jjmat292sp"],"t24":["yy843ghd1z","10ejo0u1vj1"],"t25":["1ua12z2b5lu"],"t26":["1g7u6op7rs3"],"t27":["1ogkq1419fy"],"t28":["1kvpl5hbt39"],"t29":["1npq8osy4oz"],"t30":["1ohz18znqwr"],"t31":["x8mc43a3bp"],"t32":["w7ph0vx42c"],"t33":["vfaxo8ej6s"],"t34":["1cnuoc6caac"]};
 
 /* Фазы аудиозаписи письменной части (секунды от начала) */
 const LPH = [
@@ -661,10 +664,12 @@ function renderStart() {
   else if (od > 0 || S.oral.started) { so.textContent = 'Записано заданий: ' + od + ' из 3'; so.className = 'status go'; og.textContent = 'Продолжить устную часть'; og.disabled = false; }
   else { so.textContent = 'Не начата'; so.className = 'status'; og.textContent = 'Начать устную часть'; og.disabled = false; }
   const any = !!(w.startedAt || od > 0);
-  $('#saveBtn').disabled = !any;
-  $('#saveHint').textContent = (w.finishedAt && od === 3)
-    ? 'Обе части готовы. Нажмите «Сохранить результаты», файл появится в папке «Загрузки». Отправьте его учителю в мессенджере.'
-    : 'Когда закончите обе части, нажмите «Сохранить результаты». Файл появится в папке «Загрузки». Отправьте его учителю в мессенджере.';
+  if (!sending) { $('#saveBtn').disabled = !any; $('#sendBtn').disabled = !any; }
+  $('#saveHint').textContent = S.sentAt
+    ? 'Работа отправлена учителю ' + dt(S.sentAt) + '. Если что-то изменили, отправьте её ещё раз.'
+    : (w.finishedAt && od === 3)
+      ? 'Обе части готовы. Нажмите «Отправить учителю». Работа уйдёт вместе с аудиозаписями, это может занять до минуты.'
+      : 'Когда закончите обе части, нажмите «Отправить учителю». Работа уйдёт учителю вместе с аудиозаписями.';
 }
 async function needName() {
   if (S.name) return true;
@@ -1166,24 +1171,64 @@ document.getElementById('savedMsg').textContent='Файл с оценками с
 <\/script></body></html>`;
   return html;
 }
+function msg(text, kind) {
+  const m = $('#saveMsg');
+  m.textContent = text;
+  m.style.color = kind === 'ok' ? 'var(--ok)' : kind === 'err' ? 'var(--rec)' : 'var(--muted)';
+}
+async function confirmUnfinished(what) {
+  const parts = [];
+  if (S.written.startedAt && !S.written.finishedAt) parts.push('письменная часть ещё не сдана, таймер продолжит идти');
+  if (!S.written.startedAt) parts.push('письменная часть не выполнялась');
+  if (oralDone() < 3) parts.push('в устной части записано заданий: ' + oralDone() + ' из 3');
+  if (!parts.length) return true;
+  return ask('Работа выполнена не полностью', 'Сейчас ' + parts.join('; ') + '. В работу попадут ответы на этот момент.', what);
+}
+function setBusy(b) { sending = b; $('#sendBtn').disabled = b; $('#saveBtn').disabled = b; }
+
 $('#saveBtn').addEventListener('click', async () => {
-  const btn = $('#saveBtn'); btn.disabled = true; $('#saveMsg').textContent = 'Готовлю файл…';
+  if (!(await confirmUnfinished('Сохранить всё равно'))) return;
+  setBusy(true); msg('Готовлю файл…');
   try {
-    if (S.written.startedAt && !S.written.finishedAt) {
-      const ok = await ask('Письменная часть ещё не сдана', 'В файл попадут ответы на этот момент. Таймер продолжит идти.', 'Сохранить всё равно');
-      if (!ok) { btn.disabled = false; $('#saveMsg').textContent = ''; return; }
-    }
     const html = await buildReport();
     const fname = fileBase() + '.html';
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
     a.download = fname; document.body.appendChild(a); a.click(); a.remove();
     log('Результаты сохранены в файл');
-    $('#saveMsg').textContent = 'Файл «' + fname + '» сохранён в «Загрузки». Отправьте его учителю.';
+    msg('Файл «' + fname + '» сохранён в «Загрузки». Его можно отправить учителю в мессенджере.', 'ok');
   } catch (e) {
-    $('#saveMsg').textContent = 'Не получилось сохранить файл. Попробуйте ещё раз или откройте экзамен в Google Chrome.';
+    msg('Не получилось сохранить файл. Попробуйте ещё раз или откройте экзамен в Google Chrome.', 'err');
   }
-  btn.disabled = false;
+  setBusy(false);
+});
+
+$('#sendBtn').addEventListener('click', async () => {
+  if (!(await needName())) return;
+  if (S.sentAt && !(await ask('Работа уже отправлена', 'Вы отправили её ' + dt(S.sentAt) + '. Отправить ещё раз? Учитель получит новую копию.', 'Отправить ещё раз'))) return;
+  if (!S.sentAt && !(await confirmUnfinished('Отправить всё равно'))) return;
+  setBusy(true); msg('Отправляю работу вместе с аудиозаписями. Не закрывайте страницу, это может занять до минуты…');
+  let result = 'fail';
+  try {
+    const html = await buildReport();
+    const body = JSON.stringify({ filename: fileBase() + '.html', student: S.name || 'ученик', variant: VARIANT, html });
+    try {
+      const r = await fetch(SEND_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body, redirect: 'follow' });
+      const j = await r.json().catch(() => null);
+      result = j && j.ok ? 'ok' : 'fail';
+    } catch (e) {
+      // Браузер не дал прочитать ответ сервера: отправляем ещё раз в простом режиме
+      try { await fetch(SEND_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body }); result = 'ok'; }
+      catch (e2) { result = 'fail'; }
+    }
+  } catch (e) { result = 'fail'; }
+  if (result === 'ok') {
+    S.sentAt = now(); log('Работа отправлена учителю'); save();
+    msg('Готово! Работа отправлена учителю ' + dt(S.sentAt) + '.', 'ok');
+  } else {
+    msg('Не получилось отправить. Проверьте интернет и нажмите «Отправить учителю» ещё раз. Если снова не получится, сохраните файл на компьютер и отправьте его учителю в мессенджере.', 'err');
+  }
+  setBusy(false); renderStart();
 });
 
 $('#resetBtn').addEventListener('click', async () => {
