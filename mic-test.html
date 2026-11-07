@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Проверка микрофона</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+  /* Одна карточка по центру: шаг 1 запись, шаг 2 прослушивание, шаг 3 сохранение */
+  :root {
+    --bg: #eef2f5; --card: #ffffff; --fg: #1b2530; --muted: #5d6b78;
+    --line: #d3dce4; --accent: #1f5f8b; --rec: #c2412d; --ok: #2f7a4b;
+    --body: "Golos Text", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141a20; --card: #1d252d; --fg: #e6edf3; --muted: #9aa8b5;
+      --line: #2f3b46; --accent: #6fb0dc; --rec: #ef7a63; --ok: #6cc28f; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 var(--body);
+    padding-block: 40px; padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  main { max-width: 560px; margin: 0 auto; background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 28px clamp(18px, 5vw, 32px); display: grid; gap: 22px; }
+  h1 { margin: 0; font-size: 1.5rem; font-weight: 600; text-wrap: balance; }
+  p { margin: 0; color: var(--muted); }
+  .step { display: grid; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .step h2 { margin: 0; font-size: .8rem; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button { font: 500 1rem var(--body); border-radius: 10px; padding: 12px 20px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--card); }
+  button.secondary { background: transparent; color: var(--accent); }
+  button.recording { background: var(--rec); border-color: var(--rec); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .timer { font: 500 1.4rem var(--mono); font-variant-numeric: tabular-nums; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rec);
+    animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  audio { width: 100%; }
+  .status { font-size: .95rem; }
+  .status.ok { color: var(--ok); } .status.err { color: var(--rec); }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Проверка микрофона перед пробником ОГЭ</h1>
+    <p>Скажите вслух пару фраз по-английски, например <em>“Hello, my name is… I’m ready for the exam.”</em> Потом прослушайте запись.</p>
+  </div>
+
+  <section class="step">
+    <h2>Шаг 1 · Запись</h2>
+    <div class="row">
+      <button id="recBtn" type="button">Начать запись</button>
+      <span id="dot" class="dot" hidden></span>
+      <span id="timer" class="timer">0:00</span>
+    </div>
+    <p id="status" class="status">Браузер попросит доступ к микрофону, нажмите «Разрешить».</p>
+  </section>
+
+  <section class="step" id="playStep" hidden>
+    <h2>Шаг 2 · Прослушайте</h2>
+    <audio id="player" controls></audio>
+    <p>Если голос слышно чётко, всё готово к экзамену.</p>
+  </section>
+
+  <section class="step" id="saveStep" hidden>
+    <h2>Шаг 3 · Отправьте учителю</h2>
+    <div class="row">
+      <button id="saveBtn" type="button" class="secondary">Сохранить запись</button>
+    </div>
+    <p>Файл сохранится в «Загрузки». Пришлите его учителю, чтобы он тоже проверил звук.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  const recBtn = document.getElementById('recBtn');
+  const dot = document.getElementById('dot');
+  const timerEl = document.getElementById('timer');
+  const statusEl = document.getElementById('status');
+  const player = document.getElementById('player');
+  const playStep = document.getElementById('playStep');
+  const saveStep = document.getElementById('saveStep');
+  const saveBtn = document.getElementById('saveBtn');
+
+  let recorder = null, chunks = [], stream = null, started = 0, tick = null, lastBlob = null, ext = 'webm';
+
+  function setStatus(text, kind) {
+    statusEl.textContent = text;
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  }
+  function fmt(s) { return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+  function pickType() {
+    const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    for (const t of types) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) return t;
+    }
+    return '';
+  }
+
+  async function start() {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      setStatus('Этот браузер не умеет записывать звук. Откройте файл в Google Chrome или Яндекс Браузере.', 'err');
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      setStatus('Нет доступа к микрофону. Разрешите его в настройках браузера (значок слева от адреса) и попробуйте снова.', 'err');
+      return;
+    }
+    const type = pickType();
+    ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+    recorder = type ? new MediaRecorder(stream, { mimeType: type }) : new MediaRecorder(stream);
+    chunks = [];
+    recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = () => {
+      lastBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      player.src = URL.createObjectURL(lastBlob);
+      playStep.hidden = false;
+      saveStep.hidden = false;
+      stream.getTracks().forEach(t => t.stop());
+      setStatus('Запись готова. Микрофон работает.', 'ok');
+    };
+    recorder.start();
+    started = Date.now();
+    timerEl.textContent = '0:00';
+    tick = setInterval(() => { timerEl.textContent = fmt(Math.floor((Date.now() - started) / 1000)); }, 250);
+    recBtn.textContent = 'Остановить запись';
+    recBtn.classList.add('recording');
+    dot.hidden = false;
+    setStatus('Идёт запись…');
+  }
+
+  function stop() {
+    clearInterval(tick);
+    recorder.stop();
+    recBtn.textContent = 'Записать заново';
+    recBtn.classList.remove('recording');
+    dot.hidden = true;
+  }
+
+  recBtn.addEventListener('click', () => {
+    if (recorder && recorder.state === 'recording') stop(); else start();
+  });
+
+  saveBtn.addEventListener('click', () => {
+    if (!lastBlob) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(lastBlob);
+    a.download = 'proverka-mikrofona.' + ext;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+})();
+</script>
+</body>
+</html>
